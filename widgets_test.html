@@ -1,0 +1,432 @@
+<html>
+<style>
+
+body{
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+*{
+  font-family: 'Roboto', sans-serif;
+  outline: none;
+}
+
+#stats {
+  position: absolute;
+  top:0;
+  left: 0;
+}
+
+#r3d {
+  background-color: #000;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  overflow:hidden;
+}
+
+#my-gui-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index:1;
+}
+
+#drawcanvas {
+  pointer-events: none;
+  background-color: rgba(0, 0, 0, 0);
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  overflow:hidden;
+
+}
+
+#drawsvg {
+  pointer-events: none;
+  background-color: rgba(0, 0, 0, 0);
+  left: 0;
+  top: 0;
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  overflow:hidden;
+
+}
+
+
+#drawcanvas.editing {
+  pointer-events: all;
+}
+
+.AMI.Widget {
+  font-size: 14px;
+}
+
+</style>
+<div id="my-gui-container"></div>
+
+
+<div id="viewer-grid">
+</div>
+
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r81/three.min.js"></script>
+<script type="text/javascript" src="https://cdn.rawgit.com/dataarts/dat.gui/master/build/dat.gui.min.js"></script>
+<script type="text/javascript" src="https://cdn.rawgit.com/mrdoob/stats.js/master/build/stats.min.js"></script>
+
+<!-- THREEJS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r81/three.js"></script>
+<!--AMI -->
+<!--<script type="text/javascript" src="https://cdn.rawgit.com/fnndsc/ami/master/build/ami.min.js"></script> -->
+<!-- AMI CDN -->
+<!-- <script type="text/javascript" src="js/ami.min.js"></script> -->
+<script type="text/javascript" src="ami.js"></script> 
+<!-- ANALYTICS -->
+</html>
+<script>
+
+var HelpersStack = AMI.default.Helpers.Stack;
+var LoadersVolume = AMI.default.Loaders.Volume;
+var WidgetsHandle = AMI.default.Widgets.Handle;
+var WidgetsRuler = AMI.default.Widgets.Ruler;
+var WidgetsCircle = AMI.default.Widgets.Circle;
+var WidgetsSpline = AMI.default.Widgets.Spline;
+var WidgetsPolygon = AMI.default.Widgets.Polygon;
+var WidgetsRectangle = AMI.default.Widgets.Rectangle;
+var WidgetsOrtholine = AMI.default.Widgets.Ortholine;
+var WidgetsPencil = AMI.default.Widgets.Pencil;
+var WidgetsVoxelProbe = AMI.default.Widgets.VoxelProbe;
+var ControlsTrackball = AMI.default.Controls.Trackball;
+var CamerasOrthographic = AMI.default.Cameras.Orthographic;
+var ControlsOrthographic = AMI.default.Controls.TrackballOrtho;
+
+// standard global variables
+let controls;
+let renderer;
+let viewerGrid;
+let threeD;
+let canvasDiv;
+let drawCanvas;
+let svgPanel;
+let svgDiv;
+let context;
+let stats;
+let scene;
+let camera;
+let offsets;
+let widgets = [];
+const widgetsAvailable = [
+  'Handle',
+  'Ruler',
+  'VoxelProbe',
+  'Circle',
+  'Spline',
+  'Polygon',
+  'Rectangle',
+  'Ortholine',
+  'Pencil'
+];
+const guiObjects = {
+  type: 'Handle',
+};
+
+function init() {
+  // this function is executed on each animation frame
+  function animate() {
+    // render
+    controls.update();
+    renderer.render(scene, camera);
+    stats.update();
+
+    // request new frame
+    requestAnimationFrame(function() {
+      animate();
+    });
+  }
+
+  // renderer
+  // threeD = document.getElementById('r3d');
+  viewerGrid = document.getElementById('viewer-grid');
+  threeD = document.createElement('div');
+  threeD.setAttribute('id', 'r3d');
+  renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    alpha: true,
+  });
+  renderer.setSize(threeD.clientWidth, threeD.clientHeight);
+  renderer.setClearColor(0xFFFFFF, 1);
+  viewerGrid.appendChild(threeD);
+  threeD.appendChild(renderer.domElement);
+
+  // stats
+  stats = new Stats();
+  threeD.appendChild(stats.domElement);
+
+  /* canvasDiv = document.getElementById('drawcanvas');
+  drawCanvas = document.createElement('canvas');
+  drawCanvas.setAttribute('width', threeD.clientWidth);
+  drawCanvas.setAttribute('height', threeD.clientHeight);
+  canvasDiv.appendChild(drawCanvas);
+  context = drawCanvas.getContext('2d');*/
+  svgPanel = document.createElement('div');
+  svgPanel.setAttribute('id', 'drawsvg');
+  viewerGrid.appendChild(svgPanel);
+  svgDiv = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svgDiv.setAttribute('id', 'svgPanel');
+  // svgDiv = document.getElementById('svgPanel');
+  svgDiv.setAttribute('width', threeD.clientWidth);
+  svgDiv.setAttribute('height', threeD.clientHeight);
+  svgPanel.appendChild(svgDiv);
+ 
+
+  // scene
+  scene = new THREE.Scene();
+
+  //orthocamera
+  camera = new CamerasOrthographic(threeD.clientWidth / -2, threeD.clientWidth / 2, threeD.clientHeight / 2, 
+    threeD.clientHeight / -2, 0.1, 10000);
+  // camera.position.x = 180;
+  // camera.position.y = 50;
+  // camera.position.z = 50;
+
+  // controls
+  controls = new ControlsOrthographic(camera, threeD);
+  controls.staticMoving = true;
+  controls.noRotate = true;
+  camera.controls = controls;
+
+  // camera
+  /* camera =
+    new THREE.PerspectiveCamera(
+      45, threeD.offsetWidth / threeD.offsetHeight,
+      1, 10000000);
+  camera.position.x = 150;
+  camera.position.y = 50;
+  camera.position.z = 50;
+  // controls
+  controls = new ControlsTrackball(camera, threeD);
+  controls.rotateSpeed = 1.4;
+  controls.zoomSpeed = 1.2;
+  controls.panSpeed = 0.8;
+  controls.staticMoving = true;
+  controls.dynamicDampingFactor = 0.3;*/
+
+  animate();
+}
+
+window.onload = function() {
+  // init threeJS...
+  init();
+
+  const file =
+    'https://cdn.rawgit.com/FNNDSC/data/master/dicom/rsna_2/PET/000056.dcm';
+
+  const loader = new LoadersVolume(threeD);
+  // Start off with a promise that always resolves
+  loader.load(file)
+  .then(function() {
+    const stack = loader.data[0]._stack[0];
+    loader.free();
+    let stackHelper = new HelpersStack(stack);
+
+    scene.add(stackHelper);
+
+    threeD.addEventListener('mouseup', function(evt) {
+      // if something hovered, exit
+      for (let widget of widgets) {
+        if (guiObjects.type === 'Spline' || guiObjects.type === 'Polygon' || guiObjects.type === 'Pencil') {
+          if (widget.active) {
+             widget.onMouseUp(evt);
+             return;
+          } else {
+            console.log('Spline is done');
+            return;
+          }
+         
+          
+        }
+        if (widget.active) {
+          widget.onEnd(evt);
+          return;
+        }
+      }
+    });
+
+    threeD.addEventListener('mousemove', function(evt) {
+      // if something hovered, exit
+      let cursor = 'default';
+      for (let widget of widgets) {
+        if (widget._pencil) {
+          let mouse = {
+            x: (evt.clientX - offsets.left) / threeD.offsetWidth * 2 - 1,
+            y: -((evt.clientY - offsets.top) / threeD.offsetHeight) * 2 + 1,
+          };
+          // update the raycaster
+          let raycaster = new THREE.Raycaster();
+          raycaster.setFromCamera(mouse, camera);
+          let intersects = raycaster.intersectObject(stackHelper.slice.mesh);
+          if (intersects.length <= 0) {
+            return;
+          }
+          widget.onMove(evt, intersects[0].point);
+        } else {
+          widget.onMove(evt);
+          if (widget.hovered) {
+            cursor = 'pointer';
+          }
+          threeD.style.cursor = cursor;
+        }
+      }
+    });
+
+    threeD.addEventListener('mousedown', function(evt) {
+      console.log('on mouse down');
+      // mouse position
+      let mouse = {
+        x: (evt.clientX - offsets.left) / threeD.offsetWidth * 2 - 1,
+        y: -((evt.clientY - offsets.top) / threeD.offsetHeight)
+          * 2 + 1,
+      };
+
+      // update the raycaster
+      let raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, camera);
+      let intersects = raycaster.intersectObject(stackHelper.slice.mesh);
+
+      if (intersects.length <= 0) {
+        return;
+      }
+
+      // if something hovered, exit
+      for (let widget of widgets) {
+        if ((guiObjects.type === 'Spline' || guiObjects.type === 'Polygon' || guiObjects.type === 'Pencil') && widget.active) {
+          widget.onMouseDown(evt, intersects[0].point); // send intersecting point for each point
+          return;
+        }
+        if (widget.hovered) {
+          widget.onStart(evt);
+          return;
+        }
+      }
+
+      threeD.style.cursor = 'default';
+
+      let widget = null;
+      switch (guiObjects.type) {
+        case 'Handle':
+          widget =
+            new WidgetsHandle(stackHelper.slice.mesh, controls, camera, threeD);
+          widget.worldPosition = intersects[0].point;
+          break;
+        case 'Ruler':
+          widget =
+            new WidgetsRuler(stackHelper.slice.mesh, controls, camera, threeD);
+          widget.worldPosition = intersects[0].point;
+          break;
+        case 'VoxelProbe':
+          widget =
+            new WidgetsVoxelProbe(
+              stack, stackHelper.slice.mesh, controls, camera, threeD);
+          widget.worldPosition = intersects[0].point;
+          break;
+        case 'Circle':
+          widget =
+            new WidgetsCircle(stackHelper.slice.mesh, controls, camera, threeD, svgDiv);
+          widget.worldPosition = intersects[0].point;
+          break;
+        case 'Spline':
+          widget = new WidgetsSpline(stackHelper.slice.mesh, controls, camera, threeD, svgDiv);
+          widget.worldPosition = intersects[0].point; //first point get's the intersecting point
+          break;
+        case 'Polygon':
+          widget = new WidgetsPolygon(stackHelper.slice.mesh, controls, camera, threeD, svgDiv);
+          widget.worldPosition = intersects[0].point; //first point get's the intersecting point
+          break;
+        case 'Rectangle':
+          widget = new WidgetsRectangle(stackHelper.slice.mesh, controls, camera, threeD, svgDiv);
+          widget.worldPosition = intersects[0].point;
+          break;
+        case 'Ortholine':
+          widget = new WidgetsOrtholine(stackHelper.slice.mesh, controls, camera, threeD, svgDiv);
+          widget.worldPosition = intersects[0].point;
+          break;
+        case 'Pencil':
+          widget = new WidgetsPencil(stackHelper.slice.mesh, controls, camera, threeD, svgDiv);
+          widget.worldPosition = intersects[0].point;
+          break;
+        default:
+          widget = new WidgetsHandle(stackHelper.slice.mesh, controls, camera, threeD);
+          widget.worldPosition = intersects[0].point;
+          break;
+      }
+
+      widgets.push(widget);
+      scene.add(widget);
+
+      
+    });
+
+    function onWindowResize() {
+      camera.aspect = threeD.clientWidth / threeD.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(threeD.clientWidth, threeD.clientHeight);
+
+      // update offset
+      const box = threeD.getBoundingClientRect();
+
+      const body = document.body;
+      const docEl = document.documentElement;
+
+      const scrollTop = window.pageYOffset || docEl.scrollTop || body.scrollTop;
+      const scrollLeft =
+        window.pageXOffset || docEl.scrollLeft || body.scrollLeft;
+
+      const clientTop = docEl.clientTop || body.clientTop || 0;
+      const clientLeft = docEl.clientLeft || body.clientLeft || 0;
+
+      const top = box.top + scrollTop - clientTop;
+      const left = box.left + scrollLeft - clientLeft;
+
+      offsets = {
+        top: Math.round(top),
+        left: Math.round(left),
+      };
+
+      // repaint all widgets
+      for (let widget of widgets) {
+        widget.update();
+      }
+    }
+
+    window.addEventListener('resize', onWindowResize, false);
+    onWindowResize();
+
+    //
+    const centerLPS = stack.worldCenter();
+    camera.lookAt(centerLPS.x, centerLPS.y, centerLPS.z);
+    controls.target.set(centerLPS.x, centerLPS.y, centerLPS.z);
+    camera.updateProjectionMatrix();
+
+    const gui = new dat.GUI({
+      autoPlace: false,
+    });
+
+    const widgetFolder = gui.addFolder('Widget');
+    widgetFolder.add(guiObjects, 'type', widgetsAvailable);
+    widgetFolder.open();
+
+    const customContainer = document.getElementById('my-gui-container');
+    customContainer.appendChild(gui.domElement);
+  });
+};
+
+</script>
